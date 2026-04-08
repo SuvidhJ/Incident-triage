@@ -14,6 +14,8 @@ from app.models import Action, Observation
 load_dotenv()
 
 HF_TOKEN = os.getenv("HF_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+API_KEY = HF_TOKEN or OPENAI_API_KEY
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
@@ -24,7 +26,7 @@ TASKS = ["easy", "medium", "hard"]
 TEMPERATURE = 0.0
 MAX_TOKENS = 180
 
-client = OpenAI(api_key=HF_TOKEN, base_url=API_BASE_URL) if HF_TOKEN else None
+client = OpenAI(api_key=API_KEY, base_url=API_BASE_URL) if API_KEY else None
 
 SYSTEM_PROMPT = textwrap.dedent(
     """
@@ -369,7 +371,7 @@ def heuristic_action(obs: Observation) -> Action:
 def choose_action(obs: Observation) -> Action:
     if AGENT_MODE in {"llm", "hybrid"}:
         if client is None:
-            print("HF_TOKEN is not set; falling back to heuristic policy.", file=sys.stderr)
+            print("HF_TOKEN/OPENAI_API_KEY is not set; falling back to heuristic policy.", file=sys.stderr)
             return heuristic_action(obs)
         candidate = llm_action(obs)
         if candidate is not None:
@@ -389,7 +391,8 @@ def action_str(action: Action) -> str:
 def format_error_token(error: object) -> str:
     if error is None:
         return "null"
-    return json.dumps(str(error), ensure_ascii=False)
+    # Keep error token on one line without quoting to match validator log parsing.
+    return str(error).replace("\n", " ").replace("\r", " ").strip() or "null"
 
 
 def run_task(task_id: str):
