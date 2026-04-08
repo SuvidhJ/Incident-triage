@@ -1,0 +1,29 @@
+name: incident-triage-orchestrator
+version: 0.1.0
+description: Real-world AI incident triage environment where an agent acts as an on-call engineer, gathers evidence, selects a triage decision, executes a response, and optimizes for correctness and MTTR.
+tags:
+  - openenv
+  - incident-triage
+  - oncall
+  - sre
+  - rl
+
+tasks:
+  - id: easy
+    difficulty: easy
+    description: Straightforward single-service overload incident
+  - id: medium
+    difficulty: medium
+    description: Symptom service differs from root cause dependency
+  - id: hard
+    difficulty: hard
+    description: False positive versus real incident under ambiguity
+
+models:
+  action: app.models:Action
+  observation: app.models:Observation
+  state: app.models:EnvState
+
+entrypoint:
+  module: app.server
+  app: app

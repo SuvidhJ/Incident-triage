@@ -1,0 +1,98 @@
+{
+  "scenario_id": "easy_cpu_spike",
+  "title": "Payments API CPU saturation after campaign launch",
+  "objective": "Act as the on-call engineer. Triage the incident, choose the right owner and severity, execute the best response, and submit your final decision.",
+  "active_alerts": [
+    {
+      "alert_id": "A1",
+      "service": "payments-api",
+      "metric": "cpu_usage",
+      "severity_hint": "high",
+      "current_value": "97%",
+      "threshold": "85%",
+      "duration_minutes": 18,
+      "summary": "CPU usage sustained above threshold on payments-api"
+    }
+  ],
+  "available_runbooks": [
+    {
+      "runbook_id": "RB_SCALE_WORKERS",
+      "title": "Scale worker replicas",
+      "summary": "Increase replicas for overloaded service under legitimate traffic spikes."
+    },
+    {
+      "runbook_id": "RB_CLEAR_CACHE",
+      "title": "Clear application cache",
+      "summary": "Use only when cache corruption or stale cache pressure is suspected."
+    }
+  ],
+  "visible_context": {
+    "service_overview": {
+      "payments-api": "Handles payment authorization, captures, and refunds."
+    },
+    "candidate_teams": ["payments-oncall", "infra-oncall", "db-oncall"],
+    "business_context": "A marketing campaign started 20 minutes ago."
+  },
+  "inspectables": {
+    "alert:A1": {
+      "kind": "alert_detail",
+      "content": {
+        "recent_traffic_change": "Request rate increased by 4x after campaign launch.",
+        "impacted_endpoints": ["/charge", "/refund"],
+        "customer_impact": "Checkout latency is rising."
+      }
+    },
+    "service:payments-api": {
+      "kind": "service_detail",
+      "content": {
+        "latency_p95": "1900ms",
+        "error_rate": "8%",
+        "dependency_health": {
+          "postgres-primary": "healthy",
+          "redis-cache": "healthy"
+        },
+        "cpu_profile_summary": "Thread pool saturation under high inbound load."
+      }
+    },
+    "runbook:RB_SCALE_WORKERS": {
+      "kind": "runbook_detail",
+      "content": {
+        "expected_effect": "Reduce latency under legitimate traffic spikes within 5 minutes.",
+        "safety_note": "Safe if dependencies are healthy."
+      }
+    },
+    "runbook:RB_CLEAR_CACHE": {
+      "kind": "runbook_detail",
+      "content": {
+        "expected_effect": "Helps only for cache consistency issues.",
+        "safety_note": "Not useful for CPU saturation caused by traffic."
+      }
+    },
+    "incident:I3101": {
+      "kind": "incident_detail",
+      "content": {
+        "title": "Previous campaign overload on payments-api",
+        "summary": "High traffic spike overwhelmed workers.",
+        "resolution": "Scaled replicas and traffic normalized."
+      }
+    }
+  },
+  "allowed_values": {
+    "severity": ["sev1", "sev2", "sev3", "sev4"],
+    "owner_team": ["payments-oncall", "infra-oncall", "db-oncall"],
+    "root_cause_service": ["payments-api", "postgres-primary", "redis-cache"],
+    "decision_type": ["run_runbook", "escalate", "ignore", "false_positive", "monitor"],
+    "decision_target": ["RB_SCALE_WORKERS", "RB_CLEAR_CACHE", "payments-oncall", "infra-oncall", "db-oncall", "NONE"]
+  },
+  "ground_truth": {
+    "severity": "sev2",
+    "owner_team": "payments-oncall",
+    "root_cause_service": "payments-api",
+    "decision_type": "run_runbook",
+    "decision_target": "RB_SCALE_WORKERS",
+    "expected_response_status": "mitigation_applied",
+    "key_evidence": ["alert:A1", "service:payments-api", "runbook:RB_SCALE_WORKERS"],
+    "ideal_mttr_minutes": 10,
+    "false_positive": false
+  }
+}

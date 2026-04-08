@@ -1,0 +1,102 @@
+{
+  "scenario_id": "hard_false_positive_vs_real",
+  "title": "Memory alert that looks serious but is actually an alerting false positive",
+  "objective": "Act as the on-call engineer. Determine whether this is a real production incident or a noisy false positive, execute the correct response, and submit your decision.",
+  "active_alerts": [
+    {
+      "alert_id": "A4",
+      "service": "recommendations-api",
+      "metric": "memory_working_set",
+      "severity_hint": "high",
+      "current_value": "71%",
+      "threshold": "65%",
+      "duration_minutes": 14,
+      "summary": "recommendations-api memory working set above alert threshold"
+    }
+  ],
+  "available_runbooks": [
+    {
+      "runbook_id": "RB_RESTART_PODS",
+      "title": "Restart pods",
+      "summary": "Use when sustained memory growth is causing customer impact."
+    },
+    {
+      "runbook_id": "RB_ROLLBACK_DEPLOY",
+      "title": "Rollback latest deploy",
+      "summary": "Use only when recent deploy clearly caused a user-facing regression."
+    }
+  ],
+  "visible_context": {
+    "service_overview": {
+      "recommendations-api": "Generates recommendation candidates for the homepage and product pages.",
+      "monitoring-config": "Owns shared alert rules and thresholds."
+    },
+    "candidate_teams": ["recsys-oncall", "observability-oncall", "infra-oncall"],
+    "business_context": "No drop has been observed in click-through rate or API success rate."
+  },
+  "inspectables": {
+    "alert:A4": {
+      "kind": "alert_detail",
+      "content": {
+        "alert_rule_version": "v17",
+        "notable_change": "Threshold changed in the last deployment window."
+      }
+    },
+    "service:recommendations-api": {
+      "kind": "service_detail",
+      "content": {
+        "latency_p95": "210ms",
+        "error_rate": "0.2%",
+        "business_kpi": "No customer-facing degradation observed."
+      }
+    },
+    "change:C902": {
+      "kind": "change_detail",
+      "content": {
+        "title": "Alert threshold migration",
+        "summary": "Threshold lowered from 80% to 65% due to a unit conversion bug in the alert rule rollout.",
+        "owner": "observability-oncall"
+      }
+    },
+    "incident:I4120": {
+      "kind": "incident_detail",
+      "content": {
+        "title": "Previous false positive on recommendations memory alert",
+        "summary": "Alert fired after threshold misconfiguration.",
+        "resolution": "Alert was closed as false positive and rule corrected."
+      }
+    },
+    "runbook:RB_RESTART_PODS": {
+      "kind": "runbook_detail",
+      "content": {
+        "expected_effect": "May temporarily drop memory usage but is unnecessary if there is no real incident.",
+        "safety_note": "Avoid without user impact."
+      }
+    },
+    "runbook:RB_ROLLBACK_DEPLOY": {
+      "kind": "runbook_detail",
+      "content": {
+        "expected_effect": "Rollback should only be used when deploy impact is user-facing.",
+        "safety_note": "Do not rollback based on alert noise alone."
+      }
+    }
+  },
+  "allowed_values": {
+    "severity": ["sev1", "sev2", "sev3", "sev4"],
+    "owner_team": ["recsys-oncall", "observability-oncall", "infra-oncall"],
+    "root_cause_service": ["recommendations-api", "monitoring-config", "kubernetes-node"],
+    "decision_type": ["run_runbook", "escalate", "ignore", "false_positive", "monitor"],
+    "decision_target": ["RB_RESTART_PODS", "RB_ROLLBACK_DEPLOY", "recsys-oncall", "observability-oncall", "infra-oncall", "NONE"]
+  },
+  "ground_truth": {
+    "severity": "sev4",
+    "owner_team": "observability-oncall",
+    "root_cause_service": "monitoring-config",
+    "decision_type": "false_positive",
+    "decision_target": "NONE",
+    "expected_response_status": "closed_as_false_positive",
+    "key_evidence": ["service:recommendations-api", "change:C902", "incident:I4120"],
+    "ideal_mttr_minutes": 10,
+    "false_positive": true
+  }
+}

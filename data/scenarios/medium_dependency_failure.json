@@ -1,0 +1,112 @@
+{
+  "scenario_id": "medium_dependency_failure",
+  "title": "Checkout latency caused by database connection saturation",
+  "objective": "Act as the on-call engineer. Determine whether the app team or a dependency owner should handle the incident, execute the correct response, and submit your decision.",
+  "active_alerts": [
+    {
+      "alert_id": "A2",
+      "service": "checkout-api",
+      "metric": "latency_p95",
+      "severity_hint": "critical",
+      "current_value": "3200ms",
+      "threshold": "800ms",
+      "duration_minutes": 11,
+      "summary": "Checkout latency p95 exceeded threshold"
+    },
+    {
+      "alert_id": "A3",
+      "service": "postgres-primary",
+      "metric": "active_connections",
+      "severity_hint": "high",
+      "current_value": "98%",
+      "threshold": "85%",
+      "duration_minutes": 9,
+      "summary": "Postgres primary active connections near saturation"
+    }
+  ],
+  "available_runbooks": [
+    {
+      "runbook_id": "RB_RESTART_CHECKOUT",
+      "title": "Restart checkout pods",
+      "summary": "Useful for stale app state, but may not solve dependency saturation."
+    },
+    {
+      "runbook_id": "RB_CHECK_DB_POOL",
+      "title": "Check application DB pool settings",
+      "summary": "Diagnostic checklist for application-side DB pool exhaustion."
+    }
+  ],
+  "visible_context": {
+    "service_overview": {
+      "checkout-api": "Handles cart finalization and order placement.",
+      "postgres-primary": "Primary transactional database for checkout."
+    },
+    "candidate_teams": ["app-oncall", "db-oncall", "infra-oncall"],
+    "business_context": "Errors are impacting order completion."
+  },
+  "inspectables": {
+    "alert:A2": {
+      "kind": "alert_detail",
+      "content": {
+        "customer_impact": "Users cannot complete purchases reliably.",
+        "top_error": "timeout acquiring DB connection"
+      }
+    },
+    "alert:A3": {
+      "kind": "alert_detail",
+      "content": {
+        "connection_usage": "98% of max connections in use",
+        "replication_status": "healthy"
+      }
+    },
+    "service:checkout-api": {
+      "kind": "service_detail",
+      "content": {
+        "error_rate": "17%",
+        "top_log_pattern": "timeout acquiring DB connection",
+        "recent_deploy": "none"
+      }
+    },
+    "service:postgres-primary": {
+      "kind": "service_detail",
+      "content": {
+        "cpu_usage": "62%",
+        "active_connections": "at hard limit",
+        "slow_queries": "elevated from one reporting workload"
+      }
+    },
+    "runbook:RB_RESTART_CHECKOUT": {
+      "kind": "runbook_detail",
+      "content": {
+        "expected_effect": "May recycle stuck pods but does not solve DB saturation.",
+        "safety_note": "Can temporarily reduce app throughput."
+      }
+    },
+    "incident:I2877": {
+      "kind": "incident_detail",
+      "content": {
+        "title": "Checkout outage due to DB saturation",
+        "summary": "Application symptoms were caused by exhausted database connections.",
+        "resolution": "DB team intervened and tuned connection handling."
+      }
+    }
+  },
+  "allowed_values": {
+    "severity": ["sev1", "sev2", "sev3", "sev4"],
+    "owner_team": ["app-oncall", "db-oncall", "infra-oncall"],
+    "root_cause_service": ["checkout-api", "postgres-primary", "payment-gateway"],
+    "decision_type": ["run_runbook", "escalate", "ignore", "false_positive", "monitor"],
+    "decision_target": ["RB_RESTART_CHECKOUT", "RB_CHECK_DB_POOL", "app-oncall", "db-oncall", "infra-oncall", "NONE"]
+  },
+  "ground_truth": {
+    "severity": "sev1",
+    "owner_team": "db-oncall",
+    "root_cause_service": "postgres-primary",
+    "decision_type": "escalate",
+    "decision_target": "db-oncall",
+    "expected_response_status": "escalated_correctly",
+    "key_evidence": ["alert:A2", "alert:A3", "service:checkout-api", "service:postgres-primary", "incident:I2877"],
+    "ideal_mttr_minutes": 14,
+    "false_positive": false
+  }
+}
