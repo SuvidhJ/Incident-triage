@@ -1,0 +1,17 @@
+{
+  "task_id": "medium",
+  "difficulty": "medium",
+  "description": "Triage a multi-signal incident where the symptom service is not the root cause.",
+  "scenario_ids": ["medium_dependency_failure"],
+  "max_steps": 14,
+  "success_threshold": 0.85,
+  "reward_weights": {
+    "evidence": 0.20,
+    "severity": 0.10,
+    "owner_team": 0.15,
+    "root_cause_service": 0.15,
+    "decision_type": 0.10,
+    "decision_target": 0.10,
+    "response_status": 0.20
+  }
+}

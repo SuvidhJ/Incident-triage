@@ -1,0 +1,17 @@
+{
+  "task_id": "easy",
+  "difficulty": "easy",
+  "description": "Handle a straightforward single-service overload incident.",
+  "scenario_ids": ["easy_cpu_spike"],
+  "max_steps": 12,
+  "success_threshold": 0.85,
+  "reward_weights": {
+    "evidence": 0.15,
+    "severity": 0.10,
+    "owner_team": 0.15,
+    "root_cause_service": 0.15,
+    "decision_type": 0.10,
+    "decision_target": 0.15,
+    "response_status": 0.20
+  }
+}

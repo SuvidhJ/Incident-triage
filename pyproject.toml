@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "incident-triage-orchestrator"
+version = "0.1.0"
+description = "OpenEnv incident triage environment"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn>=0.29",
+  "pydantic>=2.6",
+  "openai>=1.30",
+  "python-dotenv>=1.0",
+  "pyyaml>=6.0",
+  "openenv-core",
+]
+
+[project.scripts]
+server = "app.server:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
