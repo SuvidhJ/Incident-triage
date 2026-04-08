@@ -15,24 +15,88 @@ tags:
 
 # Incident Triage Orchestrator
 
-A real-world OpenEnv environment where an AI agent acts as an on-call engineer:
-- reads alerts
-- inspects system evidence
-- selects severity, owner, and root cause
-- executes a response
-- submits a final triage decision
+A production-style OpenEnv benchmark where an agent performs realistic incident triage:
 
-This models a genuine human workflow: production incident triage during on-call operations.
+- ingest active alerts
+- inspect evidence across alerts, services, runbooks, incidents, and changes
+- form a structured decision (severity, owner team, root cause)
+- execute response action
+- submit final triage outcome
 
-## Observation space
+This environment is designed for practical agent evaluation in SRE/on-call workflows, not toy gameplay.
 
-The observation model is app.models:Observation.
+## Why This Environment Matters
 
-Key fields:
-- task_id
-- scenario_id
-- objective
-- active_alerts
+Modern incident response is high-stakes, ambiguous, and time-sensitive. Strong agents must:
+
+- identify signal in noisy telemetry
+- avoid false escalation and underreaction
+- optimize for correctness and MTTR
+- remain deterministic and auditable under evaluation
+
+This benchmark captures those constraints with structured actions, transparent grading, and difficulty progression.
+
+## Evaluator Quick Check
+
+Run these and you should be submission-ready:
+
+```bash
+pytest -q
+openenv validate
+AGENT_MODE=heuristic python inference.py
+bash ./scripts/validate-submission.sh https://<your-space>.hf.space .
+```
+
+## OpenEnv Compliance
+
+Implemented end-to-end:
+
+- typed models: Action, Observation, RewardModel, EnvState
+- reset(task_id, seed) -> Observation
+- step(action) -> (Observation, RewardModel, done, info)
+- state() -> EnvState
+- openenv.yaml manifest with tasks/models/entrypoint
+
+Manifest: openenv.yaml
+Server entrypoint: app.server:app
+
+## Environment Interface
+
+### API Endpoints
+
+- GET / : basic status + tasks
+- GET /health : liveness
+- GET /tasks : available tasks
+- GET /metadata : benchmark metadata
+- GET /schema : JSON schema for action/observation/state
+- GET /openenv.yaml : manifest
+- POST /reset : starts episode
+- POST /step : applies action
+- GET /state : internal state snapshot (with active redaction)
+
+### Action Space
+
+```json
+{"action_type":"inspect","target_type":"alert|service|runbook|incident|change","target_id":"..."}
+```
+
+```json
+{"action_type":"set_field","field_name":"severity|owner_team|root_cause_service|decision_type|decision_target","value":"..."}
+```
+
+```json
+{"action_type":"execute_response"}
+```
+
+```json
+{"action_type":"submit"}
+```
+
+### Observation Highlights
+
+Each step includes:
+
+- objective + active alerts
 - visible_context
 - available_inspections
 - discovered_evidence
@@ -40,186 +104,146 @@ Key fields:
 - current_decision
 - response_status
 - allowed_values
-- minutes_elapsed
-- step_count
-- remaining_steps
+- step_count, remaining_steps, minutes_elapsed
 - last_action_error
 
-## Action space
+## Task Suite
 
-The action model is app.models:Action.
+Three tasks with deterministic scenario selection by seed and increasing ambiguity:
 
-Supported actions:
+| Task | Difficulty | Scenarios | Challenge |
+|---|---|---|---|
+| easy | easy | easy_cpu_spike, easy_queue_backlog_with_noise | clear overload with mild distractors |
+| medium | medium | medium_dependency_failure, medium_db_pool_regression | symptom vs root-cause mismatch |
+| hard | hard | hard_false_positive_vs_real, hard_real_incident_memory_leak | false positive discrimination under uncertainty |
 
-1. Inspect evidence
+Deterministic selection:
 
-```json
-{"action_type":"inspect","target_type":"alert|service|runbook|incident|change","target_id":"..."}
-```
+- seed=0 picks first scenario id
+- seed=1 picks second scenario id
 
-2. Set a decision field
+## Reward and Grading Design
 
-```json
-{"action_type":"set_field","field_name":"severity|owner_team|root_cause_service|decision_type|decision_target","value":"..."}
-```
+All scores are clamped to [0.0, 1.0].
 
-3. Execute selected response
+### Partial Progress Signals
 
-```json
-{"action_type":"execute_response"}
-```
+Weighted components include:
 
-4. Submit final decision
+- evidence quality
+- severity correctness
+- owner correctness
+- root cause correctness
+- decision type correctness
+- decision target correctness
+- response outcome correctness
 
-```json
-{"action_type":"submit"}
-```
+### Time and Behavior Penalties
 
-## Reward design
+Action time costs:
 
-Reward is normalized to [0, 1].
+- inspect: +2 min
+- set_field: +0 min
+- execute_response: +4 min
+- submit: +0 min
 
-Partial progress credit is given for:
-- discovering key evidence
-- setting correct severity
-- setting correct owner_team
-- setting correct root_cause_service
-- setting correct decision_type
-- setting correct decision_target
-- executing the correct response
+Penalties include:
 
-MTTR awareness:
-- inspect: 2 minutes
-- set_field: 0 minutes
-- execute_response: 4 minutes
-- submit: 0 minutes
-
-If the agent exceeds the scenario's ideal MTTR, the final score is reduced.
-
-Efficiency penalties apply for:
 - invalid actions
-- wasted exploration
-- unnecessary MTTR overrun
+- MTTR overrun
+- low-precision evidence farming
+- incoherent decision combinations
+- underreaction on real incidents
+- overreaction on false positives
 
-Additional anti-gaming guardrails:
-- irrelevant evidence discovery is mildly penalized (precision-aware evidence score)
-- incoherent decisions (for example, escalate decision_target mismatching owner_team) are penalized
-- severe underreaction and false escalation penalties are applied by task context
+### Anti-Gaming and Safety
 
-State-leak prevention:
-- `/state` hides `hidden_ground_truth` while the episode is in progress
-- ground truth is exposed only after `done=true` for auditability/post-episode analysis
+- /state redacts hidden_ground_truth while done=false
+- hidden answer keys are exposed only after episode completion
+- scenario/task loaders validate data consistency and allowed values
 
-## Tasks
+## Baseline Inference
 
-Easy:
-- scenarios: `easy_cpu_spike`, `easy_queue_backlog_with_noise`
-- single-service overload where noisy secondary signals can distract triage.
+File location: inference.py (repo root, as required)
 
-Medium:
-- scenarios: `medium_dependency_failure`, `medium_db_pool_regression`
-- symptom/root-cause mismatch requiring either correct escalation or targeted runbook execution.
+### LLM Client and Auth
 
-Hard:
-- scenarios: `hard_false_positive_vs_real`, `hard_real_incident_memory_leak`
-- ambiguity stress: one variant is a false positive, another is a real customer-impacting incident.
+- uses OpenAI Python client for all LLM calls
+- environment variables:
+  - API_BASE_URL (default: https://router.huggingface.co/v1)
+  - MODEL_NAME (default: Qwen/Qwen2.5-72B-Instruct)
+  - HF_TOKEN
+  - OPENAI_API_KEY (alias fallback; HF_TOKEN takes precedence)
 
-Scenario selection is deterministic by seed:
-- `seed=0` selects the first scenario id in each task
-- `seed=1` selects the second scenario id in each task
+### Agent Modes
 
-## Project structure
+- AGENT_MODE=heuristic (deterministic baseline)
+- AGENT_MODE=llm
+- AGENT_MODE=hybrid
+
+### Required Structured Stdout Contract
+
+The script emits only:
+
+- [START]
+- [STEP]
+- [END]
+
+Example:
 
 ```text
-app/                Environment code
-data/scenarios/     Incident scenarios
-data/tasks/         Task configs
-tests/              Unit + API tests
-inference.py        Required baseline script
-openenv.yaml        OpenEnv manifest
-Dockerfile          Container deployment
+[START] task=easy env=incident-triage-orchestrator model=Qwen/Qwen2.5-72B-Instruct
+[STEP] step=1 action={"action_type":"inspect","target_type":"alert","target_id":"A1"} reward=0.05 done=false error=null
+[END] success=true steps=10 score=1.00 rewards=0.05,0.05,...
 ```
 
-## Local setup
+Expected deterministic heuristic baseline (seed=0):
+
+- easy: 1.00
+- medium: 1.00
+- hard: 1.00
+
+## Local Setup
+
+### Python
 
 ```bash
 python -m venv .venv
+# Linux/macOS:
 source .venv/bin/activate
+# Windows PowerShell:
+# .\.venv\Scripts\Activate.ps1
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Run tests:
-
-```bash
-pytest -q
-```
-
-Run the API server:
+### Run API
 
 ```bash
 uvicorn app.server:app --host 0.0.0.0 --port 7860 --reload
 ```
 
-Test endpoints:
+### Smoke Test
 
 ```bash
-curl http://localhost:7860/
 curl http://localhost:7860/health
-curl "http://localhost:7860/reset?task_id=easy&seed=0"
+curl -X POST "http://localhost:7860/reset" -H "Content-Type: application/json" -d '{}'
 ```
 
-## Baseline inference
+## Validation Scripts
 
-Required env vars:
-- API_BASE_URL
-- MODEL_NAME
-- HF_TOKEN
-
-Optional:
-- AGENT_MODE=hybrid|llm|heuristic
-- USE_HF_DATASET=1|0
-- HF_DATASET_NAME (default: cais/mmlu)
-- HF_DATASET_CONFIG (default: computer_security)
-- HF_DATASET_SPLIT (default: test)
-
-Run:
+Linux/macOS:
 
 ```bash
-python inference.py
+bash ./scripts/precheck.sh
+bash ./scripts/validate-submission.sh https://<your-space>.hf.space .
 ```
 
-Logging format:
-- [START]
-- [STEP]
-- [END]
+Windows PowerShell:
 
-Deterministic local smoke run:
-
-```bash
-AGENT_MODE=heuristic python inference.py
+```powershell
+./scripts/precheck.ps1
 ```
-
-Local precheck scripts:
-- Linux/macOS (bash): `./scripts/precheck.sh`
-- Windows (PowerShell): `./scripts/precheck.ps1`
-
-Variant-scenario spot check (seed 1):
-
-```bash
-curl -X POST "http://localhost:7860/reset" -H "Content-Type: application/json" -d '{"task_id":"hard","seed":1}'
-```
-
-Easy environment data source:
-- By default, `incident_rl/envs/easy_security_env.py` attempts to load a Hugging Face dataset
-  and derive alert features from dataset rows.
-- If dataset loading fails (offline, missing package, or dataset unavailable), it automatically
-  falls back to the synthetic alert simulator so training/inference remains runnable.
-
-Expected bundled-scenario heuristic scores:
-- easy: 1.00
-- medium: 1.00
-- hard: 1.00
 
 ## Docker
 
@@ -229,81 +253,52 @@ Build:
 docker build -t incident-triage-orchestrator .
 ```
 
-Notes:
-- Docker image uses `requirements-runtime.txt` to keep build time low for validator time limits.
-- Full local development dependencies remain in `requirements.txt`.
-
 Run:
 
 ```bash
 docker run -p 7860:7860 incident-triage-orchestrator
 ```
 
-## Hugging Face Space deployment
+The runtime image uses requirements-runtime.txt to keep build and startup fast under validator constraints.
 
-Use a Docker Space.
+## Hugging Face Space Deployment
 
-Set secrets:
-- HF_TOKEN
+Use a Docker Space and set:
+
 - API_BASE_URL
 - MODEL_NAME
+- HF_TOKEN
 
-Optional:
-- AGENT_MODE=hybrid
+Recommended post-deploy checks:
 
-After deploy, verify:
-- /
-- /health
-- /reset
-- /step
-- /state
+- GET /health
+- POST /reset with {}
+- POST /step with a valid action
+- GET /state
 
-## OpenEnv notes
+## Repository Structure
 
-The environment implements:
-- typed Action / Observation / Reward / State models
-- reset()
-- step()
-- state()
-- deterministic task configs
-- task-specific grading in [0, 1]
+```text
+app/                    FastAPI OpenEnv server + environment logic
+data/scenarios/         Scenario definitions
+data/tasks/             Task definitions (easy/medium/hard)
+incident_rl/            RL-oriented auxiliary envs/utilities
+scripts/                Precheck and submission validator scripts
+tests/                  API/env/grader/loader/inference tests
+inference.py            Required baseline inference script
+openenv.yaml            OpenEnv manifest
+Dockerfile              Container entry
+README.md               This document
+```
 
-If the official validator expects slightly different openenv.yaml keys, adjust only that file to match the starter template.
+## What Makes This Submission Strong
 
-## Final no-fail checklist
+- real-world operational domain with practical utility
+- clear difficulty progression and deterministic reproducibility
+- rich, non-sparse reward shaping with explicit anti-gaming controls
+- strict structured logging for reliable automated scoring
+- validator-aligned deployment, docs, and scripts
 
-Core env:
-- reset() works
-- step() works
-- state() works
-- reward always in [0,1]
-- final score in [0,1]
-- easy / medium / hard all exist
-- all tasks deterministic
+## License and Usage
 
-Infra:
-- Dockerfile builds
-- server starts
-- root returns 200
-- /reset works
-- /step works
-- /state works
-
-Inference:
-- inference.py at repo root
-- uses OpenAI client
-- reads API_BASE_URL, MODEL_NAME, HF_TOKEN
-- stdout only uses [START], [STEP], [END]
-
-Docs:
-- README present
-- action space documented
-- observation space documented
-- reward documented
-- setup documented
-
-Validation:
-- pytest -q
-- docker build
-- python inference.py
-- openenv validate if available in your setup
+Intended for benchmark and research workflows around agentic incident triage and policy evaluation.
