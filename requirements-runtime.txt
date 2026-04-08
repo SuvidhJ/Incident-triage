@@ -6,11 +6,4 @@ requests>=2.31
 python-dotenv>=1.0
 pyyaml>=6.0
 openenv-core
-numpy==1.26.4
-gymnasium==1.0.0
-stable-baselines3==2.4.0
-torch>=2.2.0
-gradio==5.5.0
 openai==1.54.4
-pytest==8.3.3
-datasets>=2.20.0

@@ -49,3 +49,23 @@ def test_reset_step_state_flow():
     assert st.status_code == 200
     state_body = st.json()
     assert state_body["task_id"] == "easy"
+    assert state_body["hidden_ground_truth"] == {}
+
+
+def test_state_reveals_ground_truth_only_after_done():
+    client.post("/reset", json={"task_id": "easy", "seed": 0})
+
+    in_progress = client.get("/state")
+    assert in_progress.status_code == 200
+    assert in_progress.json()["done"] is False
+    assert in_progress.json()["hidden_ground_truth"] == {}
+
+    completed = client.post("/step", json={"action_type": "submit"})
+    assert completed.status_code == 200
+    assert completed.json()["done"] is True
+
+    final_state = client.get("/state")
+    assert final_state.status_code == 200
+    body = final_state.json()
+    assert body["done"] is True
+    assert body["hidden_ground_truth"]["severity"] == "sev2"

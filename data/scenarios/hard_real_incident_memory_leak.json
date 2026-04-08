@@ -1,0 +1,103 @@
+{
+  "scenario_id": "hard_real_incident_memory_leak",
+  "title": "Recommendations memory leak causing real customer impact",
+  "objective": "Act as the on-call engineer. Differentiate noisy deploy chatter from real service degradation, execute the right mitigation, and submit your final decision.",
+  "active_alerts": [
+    {
+      "alert_id": "A8",
+      "service": "recommendations-api",
+      "metric": "memory_working_set",
+      "severity_hint": "high",
+      "current_value": "89%",
+      "threshold": "70%",
+      "duration_minutes": 21,
+      "summary": "recommendations-api memory usage elevated and climbing"
+    }
+  ],
+  "available_runbooks": [
+    {
+      "runbook_id": "RB_RESTART_PODS",
+      "title": "Restart pods",
+      "summary": "Mitigate active memory leak while rolling out a permanent fix."
+    },
+    {
+      "runbook_id": "RB_ROLLBACK_DEPLOY",
+      "title": "Rollback latest deploy",
+      "summary": "Use only if latest deploy is conclusively the root cause."
+    }
+  ],
+  "visible_context": {
+    "service_overview": {
+      "recommendations-api": "Generates recommendation candidates for homepage and product pages.",
+      "monitoring-config": "Owns shared alert rules and thresholds."
+    },
+    "candidate_teams": ["recsys-oncall", "observability-oncall", "infra-oncall"],
+    "business_context": "Click-through rate and recommendation latency are both degrading."
+  },
+  "inspectables": {
+    "alert:A8": {
+      "kind": "alert_detail",
+      "content": {
+        "alert_rule_version": "v18",
+        "notable_change": "No threshold changes in last 48h."
+      }
+    },
+    "service:recommendations-api": {
+      "kind": "service_detail",
+      "content": {
+        "latency_p95": "1250ms",
+        "error_rate": "4.7%",
+        "business_kpi": "Recommendation click-through down 11% vs baseline.",
+        "heap_growth_pattern": "steady leak over past 30 minutes"
+      }
+    },
+    "change:C910": {
+      "kind": "change_detail",
+      "content": {
+        "title": "UI experiment rollout",
+        "summary": "Front-end experiment with no server memory footprint change.",
+        "owner": "growth-oncall"
+      }
+    },
+    "incident:I4201": {
+      "kind": "incident_detail",
+      "content": {
+        "title": "Historical recommendation memory leak",
+        "summary": "Resolved by restarting pods to drain leak while patch deployed.",
+        "resolution": "RB_RESTART_PODS used as first response."
+      }
+    },
+    "runbook:RB_RESTART_PODS": {
+      "kind": "runbook_detail",
+      "content": {
+        "expected_effect": "Restores memory headroom and reduces latency within minutes.",
+        "safety_note": "Safe when performed with rolling restart guards."
+      }
+    },
+    "runbook:RB_ROLLBACK_DEPLOY": {
+      "kind": "runbook_detail",
+      "content": {
+        "expected_effect": "Useful only when latest deploy is proven root cause.",
+        "safety_note": "Can revert unrelated fixes if used prematurely."
+      }
+    }
+  },
+  "allowed_values": {
+    "severity": ["sev1", "sev2", "sev3", "sev4"],
+    "owner_team": ["recsys-oncall", "observability-oncall", "infra-oncall"],
+    "root_cause_service": ["recommendations-api", "monitoring-config", "kubernetes-node"],
+    "decision_type": ["run_runbook", "escalate", "ignore", "false_positive", "monitor"],
+    "decision_target": ["RB_RESTART_PODS", "RB_ROLLBACK_DEPLOY", "recsys-oncall", "observability-oncall", "infra-oncall", "NONE"]
+  },
+  "ground_truth": {
+    "severity": "sev2",
+    "owner_team": "recsys-oncall",
+    "root_cause_service": "recommendations-api",
+    "decision_type": "run_runbook",
+    "decision_target": "RB_RESTART_PODS",
+    "expected_response_status": "mitigation_applied",
+    "key_evidence": ["service:recommendations-api", "incident:I4201", "runbook:RB_RESTART_PODS"],
+    "ideal_mttr_minutes": 12,
+    "false_positive": false
+  }
+}

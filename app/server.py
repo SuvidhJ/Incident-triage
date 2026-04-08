@@ -108,7 +108,11 @@ def step(action: Action):
 
 @app.get("/state", response_model=EnvState)
 def state():
-    return env.state()
+    current = env.state()
+    if not current.done:
+        # Avoid exposing answer keys while an episode is in progress.
+        current.hidden_ground_truth = {}
+    return current
 
 
 def main() -> None:

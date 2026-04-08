@@ -19,5 +19,5 @@ docker-run:
 
 precheck:
 	pytest -q
-	python inference.py
+	AGENT_MODE=heuristic python inference.py
 	docker build -t incident-triage-orchestrator .

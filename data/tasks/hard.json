@@ -2,7 +2,7 @@
   "task_id": "hard",
   "difficulty": "hard",
   "description": "Distinguish a false positive from a real production incident under ambiguity.",
-  "scenario_ids": ["hard_false_positive_vs_real"],
+  "scenario_ids": ["hard_false_positive_vs_real", "hard_real_incident_memory_leak"],
   "max_steps": 12,
   "success_threshold": 0.85,
   "reward_weights": {
