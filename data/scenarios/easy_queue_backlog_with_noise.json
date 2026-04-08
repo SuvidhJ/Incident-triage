@@ -1,0 +1,98 @@
+{
+  "scenario_id": "easy_queue_backlog_with_noise",
+  "title": "Payments queue backlog with misleading cache alert",
+  "objective": "Act as the on-call engineer. Distinguish the true bottleneck signal from noisy cache symptoms, execute the best response, and submit your final triage decision.",
+  "active_alerts": [
+    {
+      "alert_id": "A5",
+      "service": "payments-api",
+      "metric": "worker_queue_depth",
+      "severity_hint": "high",
+      "current_value": "2300",
+      "threshold": "900",
+      "duration_minutes": 14,
+      "summary": "payments-api worker queue depth sustained above threshold"
+    }
+  ],
+  "available_runbooks": [
+    {
+      "runbook_id": "RB_SCALE_WORKERS",
+      "title": "Scale worker replicas",
+      "summary": "Increase consumers and worker replicas for queue backlogs under traffic surges."
+    },
+    {
+      "runbook_id": "RB_CLEAR_CACHE",
+      "title": "Clear application cache",
+      "summary": "Only use for stale cache poisoning or correctness issues."
+    }
+  ],
+  "visible_context": {
+    "service_overview": {
+      "payments-api": "Handles payment authorization, captures, and refunds."
+    },
+    "candidate_teams": ["payments-oncall", "infra-oncall", "db-oncall"],
+    "business_context": "Promo traffic surge began 15 minutes ago."
+  },
+  "inspectables": {
+    "alert:A5": {
+      "kind": "alert_detail",
+      "content": {
+        "recent_traffic_change": "Request volume increased by 3.4x after campaign rollout.",
+        "customer_impact": "Checkout confirmation times are increasing.",
+        "cache_warnings": "Read cache hit ratio dipped but stayed above 90%."
+      }
+    },
+    "service:payments-api": {
+      "kind": "service_detail",
+      "content": {
+        "latency_p95": "1700ms",
+        "error_rate": "6%",
+        "worker_utilization": "96%",
+        "dependency_health": {
+          "postgres-primary": "healthy",
+          "redis-cache": "healthy"
+        }
+      }
+    },
+    "runbook:RB_SCALE_WORKERS": {
+      "kind": "runbook_detail",
+      "content": {
+        "expected_effect": "Reduces queue depth and latency within minutes during traffic spikes.",
+        "safety_note": "Safe when dependencies are healthy."
+      }
+    },
+    "runbook:RB_CLEAR_CACHE": {
+      "kind": "runbook_detail",
+      "content": {
+        "expected_effect": "Helps stale cache correctness issues, not queue saturation.",
+        "safety_note": "Could cause cold-start latency spikes under load."
+      }
+    },
+    "incident:I3202": {
+      "kind": "incident_detail",
+      "content": {
+        "title": "Queue backlog during seasonal traffic spike",
+        "summary": "Root cause was worker saturation, not cache corruption.",
+        "resolution": "Scaled workers and queue depth normalized."
+      }
+    }
+  },
+  "allowed_values": {
+    "severity": ["sev1", "sev2", "sev3", "sev4"],
+    "owner_team": ["payments-oncall", "infra-oncall", "db-oncall"],
+    "root_cause_service": ["payments-api", "postgres-primary", "redis-cache"],
+    "decision_type": ["run_runbook", "escalate", "ignore", "false_positive", "monitor"],
+    "decision_target": ["RB_SCALE_WORKERS", "RB_CLEAR_CACHE", "payments-oncall", "infra-oncall", "db-oncall", "NONE"]
+  },
+  "ground_truth": {
+    "severity": "sev2",
+    "owner_team": "payments-oncall",
+    "root_cause_service": "payments-api",
+    "decision_type": "run_runbook",
+    "decision_target": "RB_SCALE_WORKERS",
+    "expected_response_status": "mitigation_applied",
+    "key_evidence": ["alert:A5", "service:payments-api", "runbook:RB_SCALE_WORKERS", "incident:I3202"],
+    "ideal_mttr_minutes": 12,
+    "false_positive": false
+  }
+}

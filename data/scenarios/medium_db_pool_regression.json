@@ -1,0 +1,112 @@
+{
+  "scenario_id": "medium_db_pool_regression",
+  "title": "Checkout instability from DB pool regression",
+  "objective": "Act as the on-call engineer. Determine whether to escalate or apply a targeted runbook for the true bottleneck and submit the final triage decision.",
+  "active_alerts": [
+    {
+      "alert_id": "A6",
+      "service": "checkout-api",
+      "metric": "timeout_rate",
+      "severity_hint": "critical",
+      "current_value": "14%",
+      "threshold": "3%",
+      "duration_minutes": 10,
+      "summary": "checkout-api timeout rate breached critical threshold"
+    },
+    {
+      "alert_id": "A7",
+      "service": "postgres-primary",
+      "metric": "active_connections",
+      "severity_hint": "high",
+      "current_value": "97%",
+      "threshold": "85%",
+      "duration_minutes": 8,
+      "summary": "postgres-primary connection usage near hard cap"
+    }
+  ],
+  "available_runbooks": [
+    {
+      "runbook_id": "RB_RESTART_CHECKOUT",
+      "title": "Restart checkout pods",
+      "summary": "Useful for stuck workers but not persistent DB pool saturation."
+    },
+    {
+      "runbook_id": "RB_CHECK_DB_POOL",
+      "title": "Apply DB pool safety profile",
+      "summary": "Roll out known-safe DB pool settings and query throttles for checkout."
+    }
+  ],
+  "visible_context": {
+    "service_overview": {
+      "checkout-api": "Handles cart finalization and order placement.",
+      "postgres-primary": "Primary transactional database for checkout."
+    },
+    "candidate_teams": ["app-oncall", "db-oncall", "infra-oncall"],
+    "business_context": "Order completion errors are rising rapidly."
+  },
+  "inspectables": {
+    "alert:A6": {
+      "kind": "alert_detail",
+      "content": {
+        "top_error": "timeout acquiring DB connection",
+        "customer_impact": "Purchases intermittently fail."
+      }
+    },
+    "alert:A7": {
+      "kind": "alert_detail",
+      "content": {
+        "connection_usage": "near max connections",
+        "replication_status": "healthy"
+      }
+    },
+    "service:checkout-api": {
+      "kind": "service_detail",
+      "content": {
+        "error_rate": "16%",
+        "recent_deploy": "small config change to DB pool limits",
+        "top_log_pattern": "waiting for available DB session"
+      }
+    },
+    "service:postgres-primary": {
+      "kind": "service_detail",
+      "content": {
+        "cpu_usage": "58%",
+        "slow_queries": "moderately elevated",
+        "connection_queue": "sustained backlog"
+      }
+    },
+    "runbook:RB_CHECK_DB_POOL": {
+      "kind": "runbook_detail",
+      "content": {
+        "expected_effect": "Stabilizes checkout by restoring safe pool and throttle settings.",
+        "safety_note": "Preferred first mitigation before broad escalation."
+      }
+    },
+    "incident:I2991": {
+      "kind": "incident_detail",
+      "content": {
+        "title": "Checkout DB pool regression",
+        "summary": "Resolved by applying DB pool safety profile runbook.",
+        "resolution": "Runbook RB_CHECK_DB_POOL restored stability."
+      }
+    }
+  },
+  "allowed_values": {
+    "severity": ["sev1", "sev2", "sev3", "sev4"],
+    "owner_team": ["app-oncall", "db-oncall", "infra-oncall"],
+    "root_cause_service": ["checkout-api", "postgres-primary", "payment-gateway"],
+    "decision_type": ["run_runbook", "escalate", "ignore", "false_positive", "monitor"],
+    "decision_target": ["RB_RESTART_CHECKOUT", "RB_CHECK_DB_POOL", "app-oncall", "db-oncall", "infra-oncall", "NONE"]
+  },
+  "ground_truth": {
+    "severity": "sev1",
+    "owner_team": "db-oncall",
+    "root_cause_service": "postgres-primary",
+    "decision_type": "run_runbook",
+    "decision_target": "RB_CHECK_DB_POOL",
+    "expected_response_status": "mitigation_applied",
+    "key_evidence": ["alert:A6", "alert:A7", "service:checkout-api", "service:postgres-primary", "runbook:RB_CHECK_DB_POOL"],
+    "ideal_mttr_minutes": 14,
+    "false_positive": false
+  }
+}

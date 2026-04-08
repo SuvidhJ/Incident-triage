@@ -101,16 +101,32 @@ Efficiency penalties apply for:
 - wasted exploration
 - unnecessary MTTR overrun
 
+Additional anti-gaming guardrails:
+- irrelevant evidence discovery is mildly penalized (precision-aware evidence score)
+- incoherent decisions (for example, escalate decision_target mismatching owner_team) are penalized
+- severe underreaction and false escalation penalties are applied by task context
+
+State-leak prevention:
+- `/state` hides `hidden_ground_truth` while the episode is in progress
+- ground truth is exposed only after `done=true` for auditability/post-episode analysis
+
 ## Tasks
 
 Easy:
-- single-service overload with an obvious mitigation runbook.
+- scenarios: `easy_cpu_spike`, `easy_queue_backlog_with_noise`
+- single-service overload where noisy secondary signals can distract triage.
 
 Medium:
-- application symptoms are caused by a dependency issue, requiring correct team escalation.
+- scenarios: `medium_dependency_failure`, `medium_db_pool_regression`
+- symptom/root-cause mismatch requiring either correct escalation or targeted runbook execution.
 
 Hard:
-- noisy alert under ambiguity; the agent must distinguish a false positive from a real incident.
+- scenarios: `hard_false_positive_vs_real`, `hard_real_incident_memory_leak`
+- ambiguity stress: one variant is a false positive, another is a real customer-impacting incident.
+
+Scenario selection is deterministic by seed:
+- `seed=0` selects the first scenario id in each task
+- `seed=1` selects the second scenario id in each task
 
 ## Project structure
 
@@ -184,6 +200,16 @@ Deterministic local smoke run:
 AGENT_MODE=heuristic python inference.py
 ```
 
+Local precheck scripts:
+- Linux/macOS (bash): `./scripts/precheck.sh`
+- Windows (PowerShell): `./scripts/precheck.ps1`
+
+Variant-scenario spot check (seed 1):
+
+```bash
+curl -X POST "http://localhost:7860/reset" -H "Content-Type: application/json" -d '{"task_id":"hard","seed":1}'
+```
+
 Easy environment data source:
 - By default, `incident_rl/envs/easy_security_env.py` attempts to load a Hugging Face dataset
   and derive alert features from dataset rows.
@@ -202,6 +228,10 @@ Build:
 ```bash
 docker build -t incident-triage-orchestrator .
 ```
+
+Notes:
+- Docker image uses `requirements-runtime.txt` to keep build time low for validator time limits.
+- Full local development dependencies remain in `requirements.txt`.
 
 Run:
 

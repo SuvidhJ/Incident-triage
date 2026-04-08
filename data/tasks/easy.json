@@ -2,7 +2,7 @@
   "task_id": "easy",
   "difficulty": "easy",
   "description": "Handle a straightforward single-service overload incident.",
-  "scenario_ids": ["easy_cpu_spike"],
+  "scenario_ids": ["easy_cpu_spike", "easy_queue_backlog_with_noise"],
   "max_steps": 12,
   "success_threshold": 0.85,
   "reward_weights": {

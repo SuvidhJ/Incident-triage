@@ -28,6 +28,39 @@ def _severity_score(predicted: str | None, truth: str) -> float:
     return 0.0
 
 
+def _evidence_score(discovered_keys: list[str], key_evidence: list[str]) -> float:
+    if not key_evidence:
+        return 1.0
+
+    required = set(key_evidence)
+    discovered = {key for key in discovered_keys if not str(key).startswith("system:")}
+    matched = len(discovered.intersection(required))
+    recall = matched / len(required)
+
+    # Mildly penalize irrelevant evidence farming while keeping exploration viable.
+    extra_count = len(discovered - required)
+    precision_penalty = min(0.2, 0.03 * extra_count)
+    return max(0.0, recall * (1.0 - precision_penalty))
+
+
+def _coherence_multiplier(working_decision: dict) -> float:
+    decision_type = working_decision.get("decision_type")
+    decision_target = working_decision.get("decision_target")
+    owner_team = working_decision.get("owner_team")
+
+    multiplier = 1.0
+    if decision_type == "escalate" and owner_team and decision_target and owner_team != decision_target:
+        multiplier *= 0.9
+
+    if decision_type == "run_runbook" and decision_target and not str(decision_target).startswith("RB_"):
+        multiplier *= 0.9
+
+    if decision_type == "false_positive" and decision_target not in {None, "NONE"}:
+        multiplier *= 0.9
+
+    return multiplier
+
+
 def score_progress(
     task: TaskConfig,
     scenario: ScenarioConfig,
@@ -40,11 +73,7 @@ def score_progress(
     gt = scenario.ground_truth
     weights = task.reward_weights
 
-    key_evidence = gt.key_evidence
-    if key_evidence:
-        evidence_score = len(set(discovered_keys).intersection(set(key_evidence))) / len(key_evidence)
-    else:
-        evidence_score = 1.0
+    evidence_score = _evidence_score(discovered_keys=discovered_keys, key_evidence=gt.key_evidence)
 
     severity_score = _severity_score(working_decision.get("severity"), gt.severity)
     owner_score = _exact_match(working_decision.get("owner_team"), gt.owner_team)
@@ -66,7 +95,8 @@ def score_progress(
     time_overrun = max(0, minutes_elapsed - gt.ideal_mttr_minutes)
     efficiency_multiplier = max(0.65, 1.0 - 0.05 * invalid_actions - 0.01 * time_overrun)
 
-    final_score = raw_score * efficiency_multiplier
+    coherence_multiplier = _coherence_multiplier(working_decision)
+    final_score = raw_score * efficiency_multiplier * coherence_multiplier
 
     # If a real action was required but never executed, cap the score.
     if gt.decision_type not in {"ignore"} and response_status == "not_attempted":
@@ -93,6 +123,7 @@ def score_progress(
         "response_status": round(response_score, 4),
         "raw_score": round(raw_score, 4),
         "efficiency_multiplier": round(efficiency_multiplier, 4),
+        "coherence_multiplier": round(coherence_multiplier, 4),
         "final_score": round(final_score, 4),
     }
 

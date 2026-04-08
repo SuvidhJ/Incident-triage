@@ -8,6 +8,12 @@ echo "==> Running deterministic local inference smoke test"
 AGENT_MODE=heuristic python inference.py > /tmp/inference.log
 tail -n 20 /tmp/inference.log
 
+echo "==> Verifying strict inference stdout format"
+if grep -vE '^\[(START|STEP|END)\] ' /tmp/inference.log >/dev/null; then
+    echo "Inference log format check failed: found non-bracketed stdout lines"
+    exit 1
+fi
+
 echo "==> Building docker image"
 docker build -t incident-triage-orchestrator .
 
